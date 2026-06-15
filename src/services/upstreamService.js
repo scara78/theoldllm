@@ -12,7 +12,7 @@ export async function forwardChat(body) {
     messages: body.messages,
     stream: body.stream ?? false,
   };
-  console.log("messages",body.messages)
+ 
   const { data } = await axios.post(config.upstream.url, payload, {
     headers: {
       "Content-Type": "application/json",
@@ -21,7 +21,7 @@ export async function forwardChat(body) {
     },
     timeout: 120_000,
   });
-  console.log("datadata",data)
+ 
 
   return data;
 }
@@ -36,7 +36,7 @@ export function forwardChatStream(body) {
     messages: body.messages,
     stream: true,
   };
-  console.log("messages",body.messages)
+  
   return axios.post(config.upstream.url, payload, {
     headers: {
       "Content-Type": "application/json",

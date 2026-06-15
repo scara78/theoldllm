@@ -13,8 +13,8 @@ app.use(cors());
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log("Headers:", JSON.stringify(req.headers, null, 2));
+  // console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  // console.log("Headers:", JSON.stringify(req.headers, null, 2));
 
   res.on("finish", () => {
     console.log(`Response status: ${res.statusCode}`);
