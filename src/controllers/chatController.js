@@ -13,7 +13,7 @@ export function listModels(req, res) {
  * POST /v1/chat/completions
  */
 export async function chatCompletions(req, res) {
-  const { model, messages, stream = false } = req.body;
+  const { model, messages, stream = true } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({
