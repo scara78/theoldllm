@@ -10,7 +10,20 @@ const PORT = process.env.PORT || 5678;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log("Headers:", JSON.stringify(req.headers, null, 2));
+
+  res.on("finish", () => {
+    console.log(`Response status: ${res.statusCode}`);
+  });
+
+  next();
+});
+
+app.use(express.json({ limit: "10mb" }));
 
 // Routes
 app.use(chatRoutes);
