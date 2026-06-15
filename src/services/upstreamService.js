@@ -10,9 +10,9 @@ export async function forwardChat(body) {
   const payload = {
     model: body.model,
     messages: body.messages,
-    stream: body.stream ?? false,
+    stream: body.stream ?? true,
   };
-
+  console.log("messages",body.messages)
   const { data } = await axios.post(config.upstream.url, payload, {
     headers: {
       "Content-Type": "application/json",
