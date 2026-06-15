@@ -21,6 +21,7 @@ export async function forwardChat(body) {
     },
     timeout: 120_000,
   });
+  console.log("datadata",data)
 
   return data;
 }

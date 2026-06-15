@@ -14,7 +14,6 @@ export function listModels(req, res) {
  */
 export async function chatCompletions(req, res) {
   const { model, messages, stream = true } = req.body;
-  console.log("messages",messages)
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({
