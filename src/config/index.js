@@ -53,8 +53,9 @@ const PERPLEXITY_NAME = {
   "sonar-pro": "sonar-pro"
 }
 const ZENMUX_MODELS = {
-  "stepfun-step-3.7-flash-free": "stepfun/step-3.7-flash-free:stepfun",
-  "stepfun/step-3.7-flash-free:stepfun": "stepfun/step-3.7-flash-free:stepfun",
+  "zenmux/stepfun-step-3.7-flash-free": "stepfun/step-3.7-flash-free:stepfun",
+  "zenmux/z-ai/glm-4.6v-flash-free": "z-ai/glm-4.6v-flash-free",
+  "zenmux/z-ai/glm-4.7-flash-free":"z-ai/glm-4.7-flash-free"
 };
 
 const ALL_MODELS = { ...GPT_MODELS, ...CLAUDE_NAMES, ...DEEP_SEEK_NAMES, ...PERPLEXITY_NAME, ...ZENMUX_MODELS };
@@ -105,8 +106,8 @@ export default {
   modelMap: ALL_MODELS,
 
   // ZenMux model prefix to identify which models use ZenMux upstream
-  zenmuxModelPrefix: "stepfun-",
-  zenmuxModelPrefixAlt: "stepfun/",
+  zenmuxModelPrefix: "zenmux-",
+  zenmuxModelPrefixAlt: "zenmux/",
 
   defaultModel: "gpt-5.4",
 };

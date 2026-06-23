@@ -10,7 +10,7 @@ import { openAIToAnthropic } from "../utils/formatConverter.js";
 export function isZenMuxModel(model) {
   return model?.includes(config.zenmuxModelPrefix) ||
          model?.includes(config.zenmuxModelPrefixAlt) ||
-         config.modelMap[model]?.includes("stepfun");
+         config.modelMap[model]?.includes("zenmux");
 }
 
 /**
@@ -55,12 +55,12 @@ export async function forwardChat(body) {
  * Forward a chat completion request with streaming enabled
  * Returns an Axios stream for the caller to pipe to the client
  */
-export function forwardChatStream(body) {
+export function forwardChatStream(body,model2) {
   const { model, messages, stream, ...rest } = body;
   const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
-
+  
   // Check if this is a ZenMux model
-  if (isZenMuxModel(model) || isZenMuxModel(upstreamModel)) {
+  if (isZenMuxModel(model2) || isZenMuxModel(upstreamModel)) {
     const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
 
     return axios.post(config.zenmux.url, zenmuxPayload, {

@@ -80,7 +80,7 @@ async function handleNonStream(req, res, upstreamBody) {
 async function handleStream(req, res, upstreamBody) {
   const id = generateId();
   const model = upstreamBody.model;
-
+  const model2 = req.body.model;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -88,13 +88,16 @@ async function handleStream(req, res, upstreamBody) {
   res.flushHeaders();
 
   try {
-    const upstreamRes = await forwardChatStream(upstreamBody);
+    const upstreamRes = await forwardChatStream(upstreamBody,model2);
 
-    if (isZenMuxModel(model)) {
+    if (isZenMuxModel(model2)) {
       return handleZenMuxStream(req, res, upstreamRes, id, model);
     }
+    else{
+      return handleTheOldLlmStream(req, res, upstreamRes, id, model);
+    }
 
-    return handleTheOldLlmStream(req, res, upstreamRes, id, model);
+   
   } catch (err) {
     // If stream connection fails, send SSE error and close
     console.error("stream setup error:", err.message);
