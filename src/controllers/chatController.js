@@ -1,6 +1,7 @@
 import config, { getModelsList } from "../config/index.js";
-import { forwardChat, forwardChatStream } from "../services/upstreamService.js";
+import { forwardChat, forwardChatStream, isZenMuxModel } from "../services/upstreamService.js";
 import { generateId, formatSSEChunk, formatSSEDone } from "../utils/sse.js";
+import { anthropicToOpenAI } from "../utils/formatConverter.js";
 
 /**
  * GET /v1/models
@@ -42,6 +43,13 @@ export async function chatCompletions(req, res) {
 async function handleNonStream(req, res, upstreamBody) {
   const raw = await forwardChat(upstreamBody);
   const id = generateId();
+  const model = upstreamBody.model;
+
+  // Check if response came from ZenMux (Anthropic format)
+  if (isZenMuxModel(model)) {
+    const result = anthropicToOpenAI(raw, model, id);
+    return res.json(result);
+  }
 
   // theoldllm may return { response: "..." } or an array of chunks
   // Normalise into OpenAI format
@@ -54,7 +62,7 @@ async function handleNonStream(req, res, upstreamBody) {
     id,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
-    model: upstreamBody.model,
+    model,
     choices: [
       {
         index: 0,
@@ -71,6 +79,7 @@ async function handleNonStream(req, res, upstreamBody) {
 /* ---------- stream ---------- */
 async function handleStream(req, res, upstreamBody) {
   const id = generateId();
+  const model = upstreamBody.model;
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -80,69 +89,149 @@ async function handleStream(req, res, upstreamBody) {
 
   try {
     const upstreamRes = await forwardChatStream(upstreamBody);
-    let buffer = "";
 
-    upstreamRes.data.on("data", (chunk) => {
-      buffer += chunk.toString();
+    if (isZenMuxModel(model)) {
+      return handleZenMuxStream(req, res, upstreamRes, id, model);
+    }
 
-      // Process complete SSE lines
-      const lines = buffer.split("\n");
-      buffer = lines.pop(); // keep incomplete line in buffer
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(":")) continue;
-
-        if (trimmed === "data: [DONE]") {
-          res.write(formatSSEDone(id, upstreamBody.model));
-          continue;
-        }
-
-        if (trimmed.startsWith("data: ")) {
-          try {
-            const parsed = JSON.parse(trimmed.slice(6));
-            const content =
-              parsed?.choices?.[0]?.delta?.content ??
-              parsed?.response ??
-              parsed?.content ??
-              "";
-
-            if (content) {
-              res.write(formatSSEChunk(content, upstreamBody.model, id));
-            }
-          } catch {
-            // If upstream sends plain text instead of JSON SSE, forward as-is
-            const text = trimmed.slice(6);
-            if (text) {
-              res.write(formatSSEChunk(text, upstreamBody.model, id));
-            }
-          }
-        }
-      }
-    });
-
-    upstreamRes.data.on("end", () => {
-      // Flush remaining buffer
-      if (buffer.trim() === "data: [DONE]" || !buffer.trim()) {
-        res.write(formatSSEDone(id, upstreamBody.model));
-      }
-      res.end();
-    });
-
-    upstreamRes.data.on("error", (err) => {
-      console.error("upstream stream error:", err.message);
-      res.write(formatSSEDone(id, upstreamBody.model));
-      res.end();
-    });
-
-    // Handle client disconnect
-    req.on("close", () => {
-      upstreamRes.data.destroy();
-    });
+    return handleTheOldLlmStream(req, res, upstreamRes, id, model);
   } catch (err) {
     // If stream connection fails, send SSE error and close
     console.error("stream setup error:", err.message);
-    res.write(formatSSEDone(id, upstreamBody.model));
+    res.write(formatSSEDone(id, model));
     res.end();
   }
+}
+
+/**
+ * Handle streaming from theoldllm (OpenAI SSE format)
+ */
+function handleTheOldLlmStream(req, res, upstreamRes, id, model) {
+  let buffer = "";
+
+  upstreamRes.data.on("data", (chunk) => {
+    buffer += chunk.toString();
+
+    // Process complete SSE lines
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // keep incomplete line in buffer
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(":")) continue;
+
+      if (trimmed === "data: [DONE]") {
+        res.write(formatSSEDone(id, model));
+        continue;
+      }
+
+      if (trimmed.startsWith("data: ")) {
+        try {
+          const parsed = JSON.parse(trimmed.slice(6));
+          const content =
+            parsed?.choices?.[0]?.delta?.content ??
+            parsed?.response ??
+            parsed?.content ??
+            "";
+
+          if (content) {
+            res.write(formatSSEChunk(content, model, id));
+          }
+        } catch {
+          // If upstream sends plain text instead of JSON SSE, forward as-is
+          const text = trimmed.slice(6);
+          if (text) {
+            res.write(formatSSEChunk(text, model, id));
+          }
+        }
+      }
+    }
+  });
+
+  upstreamRes.data.on("end", () => {
+    // Flush remaining buffer
+    if (buffer.trim() === "data: [DONE]" || !buffer.trim()) {
+      res.write(formatSSEDone(id, model));
+    }
+    res.end();
+  });
+
+  upstreamRes.data.on("error", (err) => {
+    console.error("upstream stream error:", err.message);
+    res.write(formatSSEDone(id, model));
+    res.end();
+  });
+
+  // Handle client disconnect
+  req.on("close", () => {
+    upstreamRes.data.destroy();
+  });
+}
+
+/**
+ * Handle streaming from ZenMux (Anthropic SSE format)
+ * Anthropic SSE uses event: + data: pairs with different structure
+ */
+function handleZenMuxStream(req, res, upstreamRes, id, model) {
+  let buffer = "";
+  let lastEvent = "";
+
+  upstreamRes.data.on("data", (chunk) => {
+    buffer += chunk.toString();
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Track event type
+      if (trimmed.startsWith("event: ")) {
+        lastEvent = trimmed.slice(7).trim();
+        continue;
+      }
+
+      // Process data lines
+      if (trimmed.startsWith("data: ")) {
+        const dataStr = trimmed.slice(6).trim();
+
+        // Skip ping events
+        if (!dataStr || dataStr === "[DONE]" || lastEvent === "ping") {
+          continue;
+        }
+
+        try {
+          const parsed = JSON.parse(dataStr);
+
+          // Anthropic SSE types we care about:
+          // content_block_delta: has delta.text
+          // message_stop: stream ended
+          if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+            res.write(formatSSEChunk(parsed.delta.text, model, id));
+          } else if (parsed.type === "message_stop") {
+            res.write(formatSSEDone(id, model));
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+  });
+
+  upstreamRes.data.on("end", () => {
+    // Ensure we send done if not already sent
+    res.write(formatSSEDone(id, model));
+    res.end();
+  });
+
+  upstreamRes.data.on("error", (err) => {
+    console.error("zenmux stream error:", err.message);
+    res.write(formatSSEDone(id, model));
+    res.end();
+  });
+
+  req.on("close", () => {
+    upstreamRes.data.destroy();
+  });
 }

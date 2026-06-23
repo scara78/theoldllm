@@ -1,5 +1,17 @@
 import axios from "axios";
 import config from "../config/index.js";
+import { openAIToAnthropic } from "../utils/formatConverter.js";
+
+/**
+ * Check if model should use ZenMux upstream
+ * @param {string} model - Model identifier
+ * @returns {boolean} - True if should use ZenMux
+ */
+export function isZenMuxModel(model) {
+  return model?.includes(config.zenmuxModelPrefix) ||
+         model?.includes(config.zenmuxModelPrefixAlt) ||
+         config.modelMap[model]?.includes("stepfun");
+}
 
 /**
  * Forward a chat completion request to theoldllm.vercel.app
@@ -8,7 +20,24 @@ import config from "../config/index.js";
  */
 export async function forwardChat(body) {
   const { model, messages, stream, ...rest } = body;
-  const payload = { model, messages, stream: stream ?? false, ...rest };
+  const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
+
+  const payload = { model: upstreamModel, messages, stream: stream ?? false, ...rest };
+
+  // Check if this is a ZenMux model
+  if (isZenMuxModel(model) || isZenMuxModel(upstreamModel)) {
+    const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
+
+    const { data } = await axios.post(config.zenmux.url, zenmuxPayload, {
+      headers: {
+        ...config.zenmux.headers,
+        "X-Request-Token": config.zenmux.getToken(),
+      },
+      timeout: 120_000,
+    });
+
+    return data;
+  }
 
   const { data } = await axios.post(config.upstream.url, payload, {
     headers: {
@@ -19,7 +48,6 @@ export async function forwardChat(body) {
     timeout: 120_000,
   });
 
-
   return data;
 }
 
@@ -29,7 +57,23 @@ export async function forwardChat(body) {
  */
 export function forwardChatStream(body) {
   const { model, messages, stream, ...rest } = body;
-  const payload = { model, messages, stream: true, ...rest };
+  const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
+
+  // Check if this is a ZenMux model
+  if (isZenMuxModel(model) || isZenMuxModel(upstreamModel)) {
+    const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
+
+    return axios.post(config.zenmux.url, zenmuxPayload, {
+      headers: {
+        ...config.zenmux.headers,
+        "X-Request-Token": config.zenmux.getToken(),
+      },
+      timeout: 120_000,
+      responseType: "stream",
+    });
+  }
+
+  const payload = { model: upstreamModel, messages, stream: true, ...rest };
 
   return axios.post(config.upstream.url, payload, {
     headers: {
