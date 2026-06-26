@@ -52,7 +52,7 @@ export async function forwardChat(body,model2) {
 
   // Check if this is an OVH model
   if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
-    console.log("payload",payload)
+    // console.log("payload",payload)
     const { data } = await axios.post(config.ovh.url, payload, {
       headers: {
         ...config.ovh.headers,
@@ -100,7 +100,7 @@ export function forwardChatStream(body,model2) {
   // Check if this is an OVH model
   if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
     const payload = { model: upstreamModel, messages, stream: true, ...rest };
-    console.log("payload",payload)
+    // console.log("payload",payload)
     return axios.post(config.ovh.url, payload, {
       headers: {
         ...config.ovh.headers,
