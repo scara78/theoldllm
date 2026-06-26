@@ -14,6 +14,16 @@ export function isZenMuxModel(model) {
 }
 
 /**
+ * Check if model should use OVH upstream
+ * @param {string} model - Model identifier
+ * @returns {boolean} - True if should use OVH
+ */
+export function isOvhModel(model) {
+  return model?.includes(config.ovhModelPrefix) ||
+         config.modelMap[model]?.includes("ovh");
+}
+
+/**
  * Forward a chat completion request to theoldllm.vercel.app
  * @param {object} body - OpenAI-compatible request body
  * @returns {Promise<object>} - Raw response from upstream (non-stream)
@@ -32,6 +42,18 @@ export async function forwardChat(body) {
       headers: {
         ...config.zenmux.headers,
         "X-Request-Token": config.zenmux.getToken(),
+      },
+      timeout: 120_000,
+    });
+
+    return data;
+  }
+
+  // Check if this is an OVH model
+  if (isOvhModel(model) || isOvhModel(upstreamModel)) {
+    const { data } = await axios.post(config.ovh.url, payload, {
+      headers: {
+        ...config.ovh.headers,
       },
       timeout: 120_000,
     });
@@ -68,7 +90,20 @@ export function forwardChatStream(body,model2) {
         ...config.zenmux.headers,
         "X-Request-Token": config.zenmux.getToken(),
       },
-      timeout: 120_000,
+      timeout: 20000,
+      responseType: "stream",
+    });
+  }
+
+  // Check if this is an OVH model
+  if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
+    const payload = { model: upstreamModel, messages, stream: true, ...rest };
+    
+    return axios.post(config.ovh.url, payload, {
+      headers: {
+        ...config.ovh.headers,
+      },
+      timeout: 20000,
       responseType: "stream",
     });
   }
@@ -81,7 +116,7 @@ export function forwardChatStream(body,model2) {
       ...config.upstream.headers,
       "X-Request-Token": config.upstream.getToken(),
     },
-    timeout: 120_000,
+    timeout: 20000,
     responseType: "stream",
   });
 }

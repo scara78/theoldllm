@@ -25,7 +25,6 @@ const GPT_MODELS = {
   "gpt-5_2": "GPT_5_2",
   "gpt-5_1": "GPT_5_1",
   "gpt-4o": "GPT_4O",
-  "gpt-4o": "GPT_4O",
   "gpt-5_3": "GPT_5_3",
   "gpt-5_2": "GPT_5_2",
   "gpt-5_1": "GPT_5_1",
@@ -58,7 +57,12 @@ const ZENMUX_MODELS = {
   "zenmux/z-ai/glm-4.7-flash-free":"z-ai/glm-4.7-flash-free"
 };
 
-const ALL_MODELS = { ...GPT_MODELS, ...CLAUDE_NAMES, ...DEEP_SEEK_NAMES, ...PERPLEXITY_NAME, ...ZENMUX_MODELS };
+const OVH_MODELS = {
+  "ovh/qwen3.5-397b-a17b": "Qwen3.5-397B-A17B",
+  "qwen3.5-397b-a17b": "Qwen3.5-397B-A17B",
+};
+
+const ALL_MODELS = { ...GPT_MODELS, ...CLAUDE_NAMES, ...DEEP_SEEK_NAMES, ...PERPLEXITY_NAME, ...ZENMUX_MODELS, ...OVH_MODELS };
 
 export function getModelsList() {
   return Object.keys(ALL_MODELS).map((id) => ({
@@ -101,13 +105,21 @@ export default {
     getToken: generateRequestToken,
   },
 
+  // OVH upstream configuration (OpenAI format)
+  ovh: {
+    url: process.env.OVH_URL || "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  },
+
   // Map OpenAI model names → upstream model names
-  // ZenMux models are prefixed with zenmux- to indicate they use ZenMux upstream
   modelMap: ALL_MODELS,
 
-  // ZenMux model prefix to identify which models use ZenMux upstream
+  // Prefixes to identify which upstream to use
   zenmuxModelPrefix: "zenmux-",
   zenmuxModelPrefixAlt: "zenmux/",
+  ovhModelPrefix: "ovh/",
 
   defaultModel: "gpt-5.4",
 };

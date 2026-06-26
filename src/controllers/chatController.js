@@ -1,5 +1,5 @@
 import config, { getModelsList } from "../config/index.js";
-import { forwardChat, forwardChatStream, isZenMuxModel } from "../services/upstreamService.js";
+import { forwardChat, forwardChatStream, isZenMuxModel, isOvhModel } from "../services/upstreamService.js";
 import { generateId, formatSSEChunk, formatSSEDone } from "../utils/sse.js";
 import { anthropicToOpenAI } from "../utils/formatConverter.js";
 
@@ -14,6 +14,7 @@ export function listModels(req, res) {
  * POST /v1/chat/completions
  */
 export async function chatCompletions(req, res) {
+
   // console.log("Incoming request body:", JSON.stringify(req.body, null, 2));
   const { model, messages, stream = true } = req.body;
 
@@ -27,6 +28,7 @@ export async function chatCompletions(req, res) {
 
   try {
     if (stream) {
+     
       return await handleStream(req, res, { ...req.body, model: upstreamModel });
     }
     return await handleNonStream(req, res, { ...req.body, model: upstreamModel });
@@ -86,7 +88,7 @@ async function handleStream(req, res, upstreamBody) {
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
-
+  
   try {
     const upstreamRes = await forwardChatStream(upstreamBody,model2);
 
