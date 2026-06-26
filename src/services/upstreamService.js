@@ -28,14 +28,15 @@ export function isOvhModel(model) {
  * @param {object} body - OpenAI-compatible request body
  * @returns {Promise<object>} - Raw response from upstream (non-stream)
  */
-export async function forwardChat(body) {
+export async function forwardChat(body,model2) {
   const { model, messages, stream, ...rest } = body;
+  console.log("config.ovh")
   const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
 
   const payload = { model: upstreamModel, messages, stream: stream ?? false, ...rest };
 
   // Check if this is a ZenMux model
-  if (isZenMuxModel(model) || isZenMuxModel(upstreamModel)) {
+  if (isZenMuxModel(model2) || isZenMuxModel(upstreamModel)) {
     const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
 
     const { data } = await axios.post(config.zenmux.url, zenmuxPayload, {
@@ -43,19 +44,20 @@ export async function forwardChat(body) {
         ...config.zenmux.headers,
         "X-Request-Token": config.zenmux.getToken(),
       },
-      timeout: 120_000,
+      timeout: 20000,
     });
 
     return data;
   }
 
   // Check if this is an OVH model
-  if (isOvhModel(model) || isOvhModel(upstreamModel)) {
+  if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
+    console.log("payload",payload)
     const { data } = await axios.post(config.ovh.url, payload, {
       headers: {
         ...config.ovh.headers,
       },
-      timeout: 120_000,
+      timeout: 20000,
     });
 
     return data;
@@ -67,7 +69,7 @@ export async function forwardChat(body) {
       ...config.upstream.headers,
       "X-Request-Token": config.upstream.getToken(),
     },
-    timeout: 120_000,
+    timeout: 20000,
   });
 
   return data;
@@ -98,7 +100,7 @@ export function forwardChatStream(body,model2) {
   // Check if this is an OVH model
   if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
     const payload = { model: upstreamModel, messages, stream: true, ...rest };
-    
+    console.log("payload",payload)
     return axios.post(config.ovh.url, payload, {
       headers: {
         ...config.ovh.headers,

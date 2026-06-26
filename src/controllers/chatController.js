@@ -43,7 +43,8 @@ export async function chatCompletions(req, res) {
 
 /* ---------- non-stream ---------- */
 async function handleNonStream(req, res, upstreamBody) {
-  const raw = await forwardChat(upstreamBody);
+  const model2 = req.body.model;
+  const raw = await forwardChat(upstreamBody,model2);
   const id = generateId();
   const model = upstreamBody.model;
 
