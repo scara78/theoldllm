@@ -35,12 +35,10 @@ async function withRetry(fn, retries = 2) {
 
 /**
  * Parse SSE text from theoldllm into a plain content string.
- * Handles both JSON delta chunks and plain text lines.
  */
 function parseTheOldLlmSSE(raw) {
   if (typeof raw !== "string") return raw;
 
-  // Try plain JSON first
   try {
     const parsed = JSON.parse(raw);
     return parsed?.choices?.[0]?.message?.content ?? parsed?.response ?? parsed?.content ?? raw;
@@ -63,7 +61,6 @@ function parseTheOldLlmSSE(raw) {
           "";
         fullText += chunk;
       } catch {
-        // plain text chunk
         fullText += dataStr;
       }
     }
@@ -85,7 +82,6 @@ async function forwardZenMuxAsCollected(body, upstreamModel) {
 
   const raw = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
 
-  // If it's already valid JSON (non-stream response), return as-is
   try {
     const parsed = JSON.parse(raw);
     return parsed;
@@ -136,6 +132,14 @@ async function forwardZenMuxAsCollected(body, upstreamModel) {
   };
 }
 
+function getOvhHeaders() {
+  const headers = { ...config.ovh.headers };
+  if (config.ovh.token) {
+    headers["Authorization"] = `Bearer ${config.ovh.token}`;
+  }
+  return headers;
+}
+
 export async function forwardChat(body, model2) {
   const { model, messages, stream, ...rest } = body;
   const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
@@ -148,14 +152,13 @@ export async function forwardChat(body, model2) {
   if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
     return withRetry(async () => {
       const { data } = await axios.post(config.ovh.url, payload, {
-        headers: { ...config.ovh.headers },
+        headers: getOvhHeaders(),
         timeout: UPSTREAM_TIMEOUT,
       });
       return data;
     });
   }
 
-  // theoldllm — request non-stream but it may return SSE anyway; collect and parse
   return withRetry(async () => {
     const { data } = await axios.post(config.upstream.url, payload, {
       headers: {
@@ -186,7 +189,7 @@ export function forwardChatStream(body, model2) {
   if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
     const payload = { model: upstreamModel, messages, stream: true, ...rest };
     return axios.post(config.ovh.url, payload, {
-      headers: { ...config.ovh.headers },
+      headers: getOvhHeaders(),
       timeout: STREAM_TIMEOUT,
       responseType: "stream",
     });

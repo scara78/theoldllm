@@ -80,7 +80,6 @@ export default {
     getToken: generateRequestToken,
   },
 
-  // ZenMux upstream configuration (Anthropic format)
   zenmux: {
     url: process.env.ZENMUX_URL || "https://zenmux.ai/api/anthropic/v1/messages",
     headers: {
@@ -100,18 +99,16 @@ export default {
     getToken: generateRequestToken,
   },
 
-  // OVH upstream configuration (OpenAI format)
   ovh: {
     url: process.env.OVH_URL || "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+    token: process.env.OVH_TOKEN || "",
     headers: {
       "Content-Type": "application/json",
     },
   },
 
-  // Map OpenAI model names → upstream model names
   modelMap: ALL_MODELS,
 
-  // Prefixes to identify which upstream to use
   zenmuxModelPrefix: "zenmux-",
   zenmuxModelPrefixAlt: "zenmux/",
   ovhModelPrefix: "ovh/",
