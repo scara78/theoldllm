@@ -34,6 +34,44 @@ async function withRetry(fn, retries = 2) {
 }
 
 /**
+ * Parse SSE text from theoldllm into a plain content string.
+ * Handles both JSON delta chunks and plain text lines.
+ */
+function parseTheOldLlmSSE(raw) {
+  if (typeof raw !== "string") return raw;
+
+  // Try plain JSON first
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.choices?.[0]?.message?.content ?? parsed?.response ?? parsed?.content ?? raw;
+  } catch {
+    // It's SSE — parse it
+  }
+
+  let fullText = "";
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === "data: [DONE]" || trimmed.startsWith(":")) continue;
+    if (trimmed.startsWith("data: ")) {
+      const dataStr = trimmed.slice(6);
+      try {
+        const parsed = JSON.parse(dataStr);
+        const chunk =
+          parsed?.choices?.[0]?.delta?.content ??
+          parsed?.response ??
+          parsed?.content ??
+          "";
+        fullText += chunk;
+      } catch {
+        // plain text chunk
+        fullText += dataStr;
+      }
+    }
+  }
+  return fullText;
+}
+
+/**
  * ZenMux non-stream: force stream=true, collect SSE chunks, reassemble into Anthropic response object.
  */
 async function forwardZenMuxAsCollected(body, upstreamModel) {
@@ -91,7 +129,6 @@ async function forwardZenMuxAsCollected(body, upstreamModel) {
     }
   }
 
-  // Return Anthropic-shaped object
   return {
     type: "message",
     content: [{ type: "text", text: fullText }],
@@ -118,6 +155,7 @@ export async function forwardChat(body, model2) {
     });
   }
 
+  // theoldllm — request non-stream but it may return SSE anyway; collect and parse
   return withRetry(async () => {
     const { data } = await axios.post(config.upstream.url, payload, {
       headers: {
@@ -126,8 +164,9 @@ export async function forwardChat(body, model2) {
         "X-Request-Token": config.upstream.getToken(),
       },
       timeout: UPSTREAM_TIMEOUT,
+      responseType: "text",
     });
-    return data;
+    return parseTheOldLlmSSE(data);
   });
 }
 
