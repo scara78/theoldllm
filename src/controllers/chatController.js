@@ -3,6 +3,8 @@ import { forwardChat, forwardChatStream, isZenMuxModel, isOvhModel } from "../se
 import { generateId, formatSSEChunk, formatSSEDone } from "../utils/sse.js";
 import { anthropicToOpenAI } from "../utils/formatConverter.js";
 
+const FORCE_NO_STREAM = process.env.FORCE_NO_STREAM === "true";
+
 /**
  * GET /v1/models
  */
@@ -26,9 +28,11 @@ export async function chatCompletions(req, res) {
 
   const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
 
+  // If FORCE_NO_STREAM=true, always use non-stream regardless of client request
+  const useStream = FORCE_NO_STREAM ? false : stream;
+
   try {
-    if (stream) {
-     
+    if (useStream) {
       return await handleStream(req, res, { ...req.body, model: upstreamModel });
     }
     return await handleNonStream(req, res, { ...req.body, model: upstreamModel });
