@@ -2,123 +2,106 @@ import axios from "axios";
 import config from "../config/index.js";
 import { openAIToAnthropic } from "../utils/formatConverter.js";
 
-/**
- * Check if model should use ZenMux upstream
- * @param {string} model - Model identifier
- * @returns {boolean} - True if should use ZenMux
- */
 export function isZenMuxModel(model) {
   return model?.includes(config.zenmuxModelPrefix) ||
          model?.includes(config.zenmuxModelPrefixAlt) ||
          config.modelMap[model]?.includes("zenmux");
 }
 
-/**
- * Check if model should use OVH upstream
- * @param {string} model - Model identifier
- * @returns {boolean} - True if should use OVH
- */
 export function isOvhModel(model) {
   return model?.includes(config.ovhModelPrefix) ||
          config.modelMap[model]?.includes("ovh");
 }
 
-/**
- * Forward a chat completion request to theoldllm.vercel.app
- * @param {object} body - OpenAI-compatible request body
- * @returns {Promise<object>} - Raw response from upstream (non-stream)
- */
-export async function forwardChat(body,model2) {
-  const { model, messages, stream, ...rest } = body;
-  console.log("config.ovh")
-  const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
+const UPSTREAM_TIMEOUT = 120000; // 120s
+const STREAM_TIMEOUT = 180000;   // 180s
 
-  const payload = { model: upstreamModel, messages, stream: stream ?? false, ...rest };
-
-  // Check if this is a ZenMux model
-  if (isZenMuxModel(model2) || isZenMuxModel(upstreamModel)) {
-    const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
-
-    const { data } = await axios.post(config.zenmux.url, zenmuxPayload, {
-      headers: {
-        ...config.zenmux.headers,
-        "X-Request-Token": config.zenmux.getToken(),
-      },
-      timeout: 20000,
-    });
-
-    return data;
+async function withRetry(fn, retries = 2) {
+  let lastErr;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const isTimeout = err.code === "ECONNABORTED" || err.message?.includes("timeout");
+      const isRetryable = isTimeout || err.response?.status >= 500;
+      if (!isRetryable || i === retries) break;
+      console.warn(`Retry ${i + 1}/${retries} after error: ${err.message}`);
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
   }
-
-  // Check if this is an OVH model
-  if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
-    // console.log("payload",payload)
-    const { data } = await axios.post(config.ovh.url, payload, {
-      headers: {
-        ...config.ovh.headers,
-      },
-      timeout: 20000,
-    });
-
-    return data;
-  }
-
-  const { data } = await axios.post(config.upstream.url, payload, {
-    headers: {
-      "Content-Type": "application/json",
-      ...config.upstream.headers,
-      "X-Request-Token": config.upstream.getToken(),
-    },
-    timeout: 20000,
-  });
-
-  return data;
+  throw lastErr;
 }
 
-/**
- * Forward a chat completion request with streaming enabled
- * Returns an Axios stream for the caller to pipe to the client
- */
-export function forwardChatStream(body,model2) {
+export async function forwardChat(body, model2) {
   const { model, messages, stream, ...rest } = body;
   const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
-  
-  // Check if this is a ZenMux model
+  const payload = { model: upstreamModel, messages, stream: false, ...rest };
+
   if (isZenMuxModel(model2) || isZenMuxModel(upstreamModel)) {
     const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
+    return withRetry(async () => {
+      const { data } = await axios.post(config.zenmux.url, zenmuxPayload, {
+        headers: { ...config.zenmux.headers, "X-Request-Token": config.zenmux.getToken() },
+        timeout: UPSTREAM_TIMEOUT,
+      });
+      return data;
+    });
+  }
 
-    return axios.post(config.zenmux.url, zenmuxPayload, {
+  if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
+    return withRetry(async () => {
+      const { data } = await axios.post(config.ovh.url, payload, {
+        headers: { ...config.ovh.headers },
+        timeout: UPSTREAM_TIMEOUT,
+      });
+      return data;
+    });
+  }
+
+  return withRetry(async () => {
+    const { data } = await axios.post(config.upstream.url, payload, {
       headers: {
-        ...config.zenmux.headers,
-        "X-Request-Token": config.zenmux.getToken(),
+        "Content-Type": "application/json",
+        ...config.upstream.headers,
+        "X-Request-Token": config.upstream.getToken(),
       },
-      timeout: 20000,
+      timeout: UPSTREAM_TIMEOUT,
+    });
+    return data;
+  });
+}
+
+export function forwardChatStream(body, model2) {
+  const { model, messages, stream, ...rest } = body;
+  const upstreamModel = config.modelMap[model] ?? model ?? config.defaultModel;
+
+  if (isZenMuxModel(model2) || isZenMuxModel(upstreamModel)) {
+    const zenmuxPayload = openAIToAnthropic({ ...body, model: upstreamModel });
+    return axios.post(config.zenmux.url, zenmuxPayload, {
+      headers: { ...config.zenmux.headers, "X-Request-Token": config.zenmux.getToken() },
+      timeout: STREAM_TIMEOUT,
       responseType: "stream",
     });
   }
 
-  // Check if this is an OVH model
   if (isOvhModel(model2) || isOvhModel(upstreamModel)) {
     const payload = { model: upstreamModel, messages, stream: true, ...rest };
-    // console.log("payload",payload)
     return axios.post(config.ovh.url, payload, {
-      headers: {
-        ...config.ovh.headers,
-      },
-      timeout: 20000,
+      headers: { ...config.ovh.headers },
+      timeout: STREAM_TIMEOUT,
       responseType: "stream",
     });
   }
 
   const payload = { model: upstreamModel, messages, stream: true, ...rest };
-
   return axios.post(config.upstream.url, payload, {
     headers: {
       "Content-Type": "application/json",
       ...config.upstream.headers,
       "X-Request-Token": config.upstream.getToken(),
     },
-    timeout: 20000,
+    timeout: STREAM_TIMEOUT,
     responseType: "stream",
   });
 }
